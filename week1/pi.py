@@ -7,4 +7,4 @@ def estimate_pi(n, seed):
     inside_quarter_circle = sum(
         rng.random() ** 2 + rng.random() ** 2 <= 1 for _ in range(n)
     )
-    return 1 * inside_quarter_circle / n
+    return 4 * inside_quarter_circle / n
