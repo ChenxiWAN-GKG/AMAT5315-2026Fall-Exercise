@@ -12,8 +12,13 @@ pub fn lennard_jones_energy(distance: f64) -> f64 {
 }
 
 /// Return the signed reduced radial Lennard-Jones force at a given distance.
-pub fn lennard_jones_force(_distance: f64) -> f64 {
-    todo!("implement the Lennard-Jones force")
+pub fn lennard_jones_force(distance: f64) -> f64 {
+    let inverse_distance = 1.0 / distance;
+    let inverse_distance_to_sixth = inverse_distance.powi(6);
+
+    24.0
+        * inverse_distance
+        * (2.0 * inverse_distance_to_sixth.powi(2) - inverse_distance_to_sixth)
 }
 
 #[cfg(test)]
