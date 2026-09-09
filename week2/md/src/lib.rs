@@ -3,6 +3,19 @@ pub fn greeting() -> &'static str {
     "Hello, world!"
 }
 
+/// Return the reduced Lennard-Jones pair energy at a given distance.
+pub fn lennard_jones_energy(distance: f64) -> f64 {
+    let inverse_distance = 1.0 / distance;
+    let inverse_distance_to_sixth = inverse_distance.powi(6);
+
+    4.0 * (inverse_distance_to_sixth.powi(2) - inverse_distance_to_sixth)
+}
+
+/// Return the signed reduced radial Lennard-Jones force at a given distance.
+pub fn lennard_jones_force(_distance: f64) -> f64 {
+    todo!("implement the Lennard-Jones force")
+}
+
 #[cfg(test)]
 mod tests {
     use super::greeting;
