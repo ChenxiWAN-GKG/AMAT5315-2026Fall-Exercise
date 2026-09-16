@@ -23,9 +23,11 @@ The initial state is
 The initial separation is therefore `1.2`, the center of mass is at rest, and
 the reference energy is `E0 = U(1.2)`.
 
-This design does not add periodic boundaries, more atoms, alternative
-potentials, command-line configuration, or external dependencies beyond the
-macOS Quick Look utility already used by the field renderer.
+For this two-atom experiment, this design does not add periodic boundaries,
+more atoms, alternative potentials, command-line configuration, or external
+dependencies beyond the macOS Quick Look utility already used by the field
+renderer. The separate periodic-fluid CLI is documented in `README.md` and
+does not change this dimer experiment contract.
 
 ## Data Model
 

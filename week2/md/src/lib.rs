@@ -1,3 +1,10 @@
+pub mod fluid;
+pub mod io;
+pub mod run;
+pub mod check;
+pub mod rdf;
+pub mod video;
+
 use std::error::Error;
 use std::fmt;
 
