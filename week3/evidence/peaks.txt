@@ -1,0 +1,21 @@
+2D Ising susceptibility peak estimates
+chi(T) = L^2 (mean(M^2) - mean(|M|)^2) / T
+peak fits: window-l32 and window-l64, five points around each discrete maximum
+T_peak(32) = 2.33552992
+T_peak(64) = 2.30632708
+T_c = 2*T_peak(64) - T_peak(32) = 2.27712423
+mean |M| (L=32, T=1.50) = 0.98664064
+mean |M| (L=64, T=1.50) = 0.98649767
+
+L=32 fit points:
+  T=2.20, chi=5.78792275
+  T=2.25, chi=11.13463124
+  T=2.30, chi=18.81832342
+  T=2.35, chi=18.79513142
+  T=2.40, chi=15.07429321
+L=64 fit points:
+  T=2.20, chi=5.54677550
+  T=2.25, chi=42.28968699
+  T=2.30, chi=74.53055635
+  T=2.35, chi=41.56412573
+  T=2.40, chi=21.98497969
