@@ -1,0 +1,15 @@
+2D Ising susceptibility block-bootstrap
+500 replicates per block length; window runs only; observable is chi(T)
+Failed fit: upward-opening parabola or vertex outside its five fitted temperatures
+Stable means the three bootstrap errors agree within 10% of their mean
+
+block_length=2000 bootstrap_error_Tc=0.00906802
+  L=32 failed_fits=0 valid_fits=500
+  L=64 failed_fits=0 valid_fits=500
+block_length=4000 bootstrap_error_Tc=0.00826835
+  L=32 failed_fits=0 valid_fits=500
+  L=64 failed_fits=0 valid_fits=500
+block_length=8000 bootstrap_error_Tc=0.00791229
+  L=32 failed_fits=0 valid_fits=500
+  L=64 failed_fits=0 valid_fits=500
+stable_across_block_lengths=False
