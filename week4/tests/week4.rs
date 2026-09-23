@@ -1,12 +1,20 @@
 use std::f64::consts::PI;
 
 use week4::{
-    ExplicitMidpoint, ForwardEuler, Integrator, RungeKutta4,
+    EqualWeightRungeKutta4, ExplicitMidpoint, ForwardEuler, Integrator, RungeKutta4,
     advection_diffusion_centered_rate, advection_diffusion_fourier_rate,
 };
 
 fn exact_wave(x: f64, t: f64, k: i32, c: f64, nu: f64) -> f64 {
     ((k as f64) * (x - c * t)).cos() * (-(nu * (k * k) as f64) * t).exp()
+}
+
+#[test]
+fn equal_weight_rk4_uses_equal_stage_weights() {
+    let rate = |state: &[f64]| vec![state[0] * state[0]];
+    let ordinary = RungeKutta4.step(&[1.0], 0.5, rate)[0];
+    let equal = EqualWeightRungeKutta4.step(&[1.0], 0.5, rate)[0];
+    assert!((ordinary - equal).abs() > 1.0e-4);
 }
 
 fn integrate<I: Integrator>(integrator: I, state: Vec<f64>, dt: f64, steps: usize) -> Vec<f64> {

@@ -59,6 +59,27 @@ impl Integrator for RungeKutta4 {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct EqualWeightRungeKutta4;
+
+impl Integrator for EqualWeightRungeKutta4 {
+    fn step<F>(&self, state: &[f64], dt: f64, rate: F) -> Vec<f64>
+    where
+        F: Fn(&[f64]) -> Vec<f64>,
+    {
+        let k1 = rate(state);
+        let stage2 = state.iter().zip(&k1).map(|(y, dy)| y + 0.5 * dt * dy).collect::<Vec<_>>();
+        let k2 = rate(&stage2);
+        let stage3 = state.iter().zip(&k2).map(|(y, dy)| y + 0.5 * dt * dy).collect::<Vec<_>>();
+        let k3 = rate(&stage3);
+        let stage4 = state.iter().zip(&k3).map(|(y, dy)| y + dt * dy).collect::<Vec<_>>();
+        let k4 = rate(&stage4);
+        state.iter().zip(k1).zip(k2).zip(k3).zip(k4)
+            .map(|((((y, a), b), c), d)| y + dt * (a + b + c + d) / 4.0)
+            .collect()
+    }
+}
+
 /// Return the Fourier spectral rate for `u_t + c u_x = nu u_xx`.
 pub fn advection_diffusion_fourier_rate(
     n: usize,

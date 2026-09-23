@@ -2,7 +2,8 @@ use std::env;
 use std::f64::consts::PI;
 
 use week4::{
-    ForwardEuler, Integrator, RungeKutta4, advection_diffusion_centered_rate,
+    EqualWeightRungeKutta4, ExplicitMidpoint, ForwardEuler, Integrator, RungeKutta4,
+    advection_diffusion_centered_rate,
     advection_diffusion_fourier_rate,
 };
 
@@ -51,6 +52,10 @@ fn main() {
             ForwardEuler.step(&state, step, &rate)
         } else if integrator == "rk4" {
             RungeKutta4.step(&state, step, &rate)
+        } else if integrator == "midpoint" {
+            ExplicitMidpoint.step(&state, step, &rate)
+        } else if integrator == "equal-rk4" {
+            EqualWeightRungeKutta4.step(&state, step, &rate)
         } else {
             panic!("unknown integrator: {integrator}");
         };
