@@ -14,3 +14,7 @@ path = "src/bin/stability_data.rs"
 [[bin]]
 name = "line-data"
 path = "src/bin/line_data.rs"
+
+[[bin]]
+name = "line-accuracy-data"
+path = "src/bin/line_accuracy_data.rs"
