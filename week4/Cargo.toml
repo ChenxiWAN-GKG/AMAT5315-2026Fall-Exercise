@@ -1,0 +1,16 @@
+[package]
+name = "week4"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "week4"
+path = "src/lib.rs"
+
+[[bin]]
+name = "stability-data"
+path = "src/bin/stability_data.rs"
+
+[[bin]]
+name = "line-data"
+path = "src/bin/line_data.rs"
