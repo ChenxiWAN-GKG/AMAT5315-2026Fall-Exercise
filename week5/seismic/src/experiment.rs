@@ -46,8 +46,8 @@ struct RawExperiment {
 
 pub fn load_experiment(path: &Path) -> Result<Experiment, String> {
     let file = File::open(path).map_err(|error| format!("open experiment: {error}"))?;
-    let raw: RawExperiment = serde_json::from_reader(file)
-        .map_err(|error| format!("parse experiment JSON: {error}"))?;
+    let raw: RawExperiment =
+        serde_json::from_reader(file).map_err(|error| format!("parse experiment JSON: {error}"))?;
     let shots = convert_coordinates("shot", &raw.shots)?;
     let receivers = convert_coordinates("receiver", &raw.receivers)?;
     let background = make_array("background", raw.background, raw.nz, raw.nx)?;
@@ -119,8 +119,16 @@ fn convert_coordinates(kind: &str, coordinates: &[[f64; 2]]) -> Result<Vec<[usiz
         .iter()
         .enumerate()
         .map(|(index, &[x, z])| {
-            if !x.is_finite() || !z.is_finite() || x.fract() != 0.0 || z.fract() != 0.0 || x < 0.0 || z < 0.0 {
-                return Err(format!("{kind} {index} coordinates must be nonnegative integers"));
+            if !x.is_finite()
+                || !z.is_finite()
+                || x.fract() != 0.0
+                || z.fract() != 0.0
+                || x < 0.0
+                || z < 0.0
+            {
+                return Err(format!(
+                    "{kind} {index} coordinates must be nonnegative integers"
+                ));
             }
             Ok([x as usize, z as usize])
         })

@@ -9,8 +9,7 @@ pub fn build_sponge(nx: usize, nz: usize, width: f64, strength: f64) -> Array2<f
     }
     for z in 0..nz {
         for x in 0..nx {
-            let distance = (x.min(nx - 1 - x))
-                .min(z.min(nz - 1 - z)) as f64;
+            let distance = (x.min(nx - 1 - x)).min(z.min(nz - 1 - z)) as f64;
             let factor = (1.0 - distance / width).max(0.0);
             sponge[[z, x]] = strength * factor * factor;
         }
@@ -23,12 +22,7 @@ pub fn ricker(t: f64, frequency: f64, peak_time: f64) -> f64 {
     (1.0 - 2.0 * theta * theta) * (-theta * theta).exp()
 }
 
-pub fn gaussian_footprint(
-    nx: usize,
-    nz: usize,
-    shot_x: usize,
-    shot_z: usize,
-) -> Array2<f64> {
+pub fn gaussian_footprint(nx: usize, nz: usize, shot_x: usize, shot_z: usize) -> Array2<f64> {
     let mut footprint = Array2::zeros((nz, nx));
     for z in 0..nz {
         for x in 0..nx {
@@ -60,18 +54,13 @@ pub fn advance(
                 + current[[z + 1, x]]
                 - 4.0 * current[[z, x]])
                 / (dx * dx);
-            next[[z, x]] = (2.0 * current[[z, x]]
-                - (1.0 - sigma[[z, x]] * dt) * previous[[z, x]]
-                + dt * dt
-                    * (speed[[z, x]] * speed[[z, x]] * laplacian + source[[z, x]]))
+            next[[z, x]] = (2.0 * current[[z, x]] - (1.0 - sigma[[z, x]] * dt) * previous[[z, x]]
+                + dt * dt * (speed[[z, x]] * speed[[z, x]] * laplacian + source[[z, x]]))
                 / (1.0 + sigma[[z, x]] * dt);
         }
     }
 }
 
 pub fn sample_receivers(field: &Array2<f64>, receivers: &[[usize; 2]]) -> Vec<f64> {
-    receivers
-        .iter()
-        .map(|&[x, z]| field[[z, x]])
-        .collect()
+    receivers.iter().map(|&[x, z]| field[[z, x]]).collect()
 }

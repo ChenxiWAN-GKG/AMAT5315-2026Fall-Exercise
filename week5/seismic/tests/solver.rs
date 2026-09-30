@@ -30,14 +30,7 @@ fn one_step_update_uses_centered_laplacian_and_keeps_boundaries_zero() {
     source[[2, 2]] = 3.0;
 
     advance(
-        &previous,
-        &current,
-        &mut next,
-        &speed,
-        &sigma,
-        &source,
-        1.0,
-        0.1,
+        &previous, &current, &mut next, &speed, &sigma, &source, 1.0, 0.1,
     );
 
     assert!((next[[2, 2]] - 1.87).abs() < 1e-12);
