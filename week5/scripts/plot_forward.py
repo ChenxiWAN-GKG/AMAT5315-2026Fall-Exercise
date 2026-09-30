@@ -56,7 +56,7 @@ def print_summary(traces_path: str | Path) -> None:
         time_index, receiver_index = np.unravel_index(np.argmax(np.abs(shot)), shot.shape)
         print(
             f"shot {shot_index}: max={shot[time_index, receiver_index]:.9f}, "
-            f"step={time_index}, receiver={receiver_index}"
+            f"trace index={time_index}, receiver={receiver_index}"
         )
 
 
