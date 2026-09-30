@@ -1,12 +1,14 @@
 use std::path::{Path, PathBuf};
 
 use clap::Parser;
-use ndarray::{s, Array2, Array3};
+use ndarray::{Array2, Array3, s};
 use ndarray_npy::write_npy;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
-use seismic::experiment::{load_experiment, Experiment};
-use seismic::solver::{advance, build_sponge, gaussian_footprint, ricker, sample_receivers};
+use seismic::experiment::{Experiment, load_experiment};
+use seismic::solver::{
+    advance, build_sponge, enzyme_step_cell, gaussian_footprint, ricker, sample_receivers,
+};
 
 #[derive(Debug, Parser)]
 #[command(about = "Simulate the Week 5 acoustic seismic experiment")]
@@ -35,19 +37,22 @@ fn main() {
 
 fn run() -> Result<(), String> {
     let args = Args::parse();
-    if args.mode != "forward" {
-        return Err(format!(
-            "unsupported mode '{}'; only forward is available",
-            args.mode
-        ));
-    }
     if args.every == Some(0) {
         return Err("--every must be positive".to_string());
+    }
+    if args.mode != "forward" && args.mode != "born" {
+        return Err(format!(
+            "unsupported mode '{}'; only forward and born are available",
+            args.mode
+        ));
     }
     let experiment = load_experiment(&args.experiment)?;
     std::fs::create_dir_all(&args.out)
         .map_err(|error| format!("create output directory: {error}"))?;
-    write_metadata(&args, &experiment)?;
+    if args.mode == "born" {
+        return run_born(&args, &experiment);
+    }
+    write_metadata(&args, &experiment, "forward")?;
 
     let sigma = build_sponge(
         experiment.nx,
@@ -99,6 +104,86 @@ fn run() -> Result<(), String> {
         update_recording_metadata(&args.out, every, experiment.steps, wavefield.shape()[0])?;
     }
     Ok(())
+}
+
+fn run_born(args: &Args, experiment: &Experiment) -> Result<(), String> {
+    write_metadata(args, experiment, "born")?;
+    let sigma = build_sponge(
+        experiment.nx,
+        experiment.nz,
+        experiment.sponge_width as f64,
+        experiment.sponge_strength,
+    );
+    let mut born_data = Array3::zeros((
+        experiment.shots.len(),
+        experiment.steps,
+        experiment.receivers.len(),
+    ));
+    for (shot_index, &shot) in experiment.shots.iter().enumerate() {
+        let traces = run_born_shot(experiment, &sigma, shot);
+        born_data.slice_mut(s![shot_index, .., ..]).assign(&traces);
+    }
+    write_npy(args.out.join("born_data.npy"), &born_data)
+        .map_err(|error| format!("write born_data.npy: {error}"))?;
+    Ok(())
+}
+
+fn run_born_shot(experiment: &Experiment, sigma: &Array2<f64>, shot: [usize; 2]) -> Array2<f64> {
+    let footprint = gaussian_footprint(experiment.nx, experiment.nz, shot[0], shot[1]);
+    let mut previous = Array2::zeros((experiment.nz, experiment.nx));
+    let mut current = Array2::zeros((experiment.nz, experiment.nx));
+    let mut previous_dot = Array2::zeros((experiment.nz, experiment.nx));
+    let mut current_dot = Array2::zeros((experiment.nz, experiment.nx));
+    let mut next = Array2::zeros((experiment.nz, experiment.nx));
+    let mut next_dot = Array2::zeros((experiment.nz, experiment.nx));
+    let mut traces = Array2::zeros((experiment.steps, experiment.receivers.len()));
+
+    for step in 0..experiment.steps {
+        let source_value = experiment.source_amplitude
+            * ricker(
+                step as f64 * experiment.dt,
+                experiment.source_frequency,
+                experiment.source_peak_time,
+            );
+        let source = &footprint * source_value;
+        next.fill(0.0);
+        next_dot.fill(0.0);
+        for z in 1..(experiment.nz - 1) {
+            for x in 1..(experiment.nx - 1) {
+                let (value, tangent) = enzyme_step_cell(
+                    previous[[z, x]],
+                    current[[z, x]],
+                    current[[z, x - 1]],
+                    current[[z, x + 1]],
+                    current[[z - 1, x]],
+                    current[[z + 1, x]],
+                    experiment.background[[z, x]],
+                    sigma[[z, x]],
+                    source[[z, x]],
+                    experiment.dx,
+                    experiment.dt,
+                    previous_dot[[z, x]],
+                    current_dot[[z, x]],
+                    current_dot[[z, x - 1]],
+                    current_dot[[z, x + 1]],
+                    current_dot[[z - 1, x]],
+                    current_dot[[z + 1, x]],
+                    experiment.perturbation[[z, x]],
+                );
+                next[[z, x]] = value;
+                next_dot[[z, x]] = tangent;
+            }
+        }
+        std::mem::swap(&mut previous, &mut current);
+        std::mem::swap(&mut current, &mut next);
+        std::mem::swap(&mut previous_dot, &mut current_dot);
+        std::mem::swap(&mut current_dot, &mut next_dot);
+        let samples = sample_receivers(&current_dot, &experiment.receivers);
+        for (receiver, value) in samples.into_iter().enumerate() {
+            traces[[step, receiver]] = value;
+        }
+    }
+    traces
 }
 
 fn run_shot(
@@ -160,13 +245,13 @@ fn stack_frames(frames: &[Array2<f32>], nz: usize, nx: usize) -> Array3<f32> {
     output
 }
 
-fn write_metadata(args: &Args, experiment: &Experiment) -> Result<(), String> {
+fn write_metadata(args: &Args, experiment: &Experiment, mode: &str) -> Result<(), String> {
     let run = json!({
         "experiment_file": args.experiment,
         "experiment": experiment_summary(experiment),
     });
     let result = json!({
-        "mode": "forward",
+        "mode": mode,
         "nx": experiment.nx,
         "nz": experiment.nz,
         "dx": experiment.dx,

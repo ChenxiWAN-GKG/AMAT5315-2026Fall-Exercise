@@ -2,6 +2,77 @@ use std::f64::consts::PI;
 
 use ndarray::Array2;
 
+unsafe extern "C" {
+    fn enzyme_step_cell_forward(
+        previous: f64,
+        current: f64,
+        left: f64,
+        right: f64,
+        up: f64,
+        down: f64,
+        speed: f64,
+        sigma: f64,
+        source: f64,
+        dx: f64,
+        dt: f64,
+        previous_dot: f64,
+        current_dot: f64,
+        left_dot: f64,
+        right_dot: f64,
+        up_dot: f64,
+        down_dot: f64,
+        speed_dot: f64,
+        out: *mut f64,
+    );
+}
+
+pub fn enzyme_step_cell(
+    previous: f64,
+    current: f64,
+    left: f64,
+    right: f64,
+    up: f64,
+    down: f64,
+    speed: f64,
+    sigma: f64,
+    source: f64,
+    dx: f64,
+    dt: f64,
+    previous_dot: f64,
+    current_dot: f64,
+    left_dot: f64,
+    right_dot: f64,
+    up_dot: f64,
+    down_dot: f64,
+    speed_dot: f64,
+) -> (f64, f64) {
+    let mut output = [0.0; 2];
+    unsafe {
+        enzyme_step_cell_forward(
+            previous,
+            current,
+            left,
+            right,
+            up,
+            down,
+            speed,
+            sigma,
+            source,
+            dx,
+            dt,
+            previous_dot,
+            current_dot,
+            left_dot,
+            right_dot,
+            up_dot,
+            down_dot,
+            speed_dot,
+            output.as_mut_ptr(),
+        );
+    }
+    (output[0], output[1])
+}
+
 pub fn build_sponge(nx: usize, nz: usize, width: f64, strength: f64) -> Array2<f64> {
     let mut sponge = Array2::zeros((nz, nx));
     if width <= 0.0 {
