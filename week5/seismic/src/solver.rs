@@ -3,6 +3,23 @@ use std::f64::consts::PI;
 use ndarray::Array2;
 
 unsafe extern "C" {
+    #[link_name = "enzyme_step_cell_reverse"]
+    fn enzyme_step_cell_reverse_ffi(
+        previous: f64,
+        current: f64,
+        left: f64,
+        right: f64,
+        up: f64,
+        down: f64,
+        speed: f64,
+        sigma: f64,
+        source: f64,
+        dx: f64,
+        dt: f64,
+        output_bar: f64,
+        out: *mut f64,
+    );
+
     fn enzyme_step_cell_forward(
         previous: f64,
         current: f64,
@@ -24,6 +41,41 @@ unsafe extern "C" {
         speed_dot: f64,
         out: *mut f64,
     );
+}
+
+pub fn enzyme_step_cell_reverse(
+    previous: f64,
+    current: f64,
+    left: f64,
+    right: f64,
+    up: f64,
+    down: f64,
+    speed: f64,
+    sigma: f64,
+    source: f64,
+    dx: f64,
+    dt: f64,
+    output_bar: f64,
+) -> [f64; 8] {
+    let mut output = [0.0; 8];
+    unsafe {
+        enzyme_step_cell_reverse_ffi(
+            previous,
+            current,
+            left,
+            right,
+            up,
+            down,
+            speed,
+            sigma,
+            source,
+            dx,
+            dt,
+            output_bar,
+            output.as_mut_ptr(),
+        );
+    }
+    output
 }
 
 pub fn enzyme_step_cell(
