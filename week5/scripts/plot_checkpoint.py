@@ -72,7 +72,9 @@ def plot_work(results):
     axes[0].set(xlabel="Additional checkpoint slots",ylabel="Forward steps per shot")
     axes[0].legend()
     axes[1].plot(budgets,saved_bytes,"o-",label="Treeverse")
-    axes[1].axhline(full["peak_saved_bytes"],color="gray",ls="--",label="full history")
+    axes[1].set_ylim(0,max(saved_bytes)*1.2)
+    axes[1].text(0.03,0.97,f"Full history: {full['peak_saved_bytes']:,} bytes",
+                 transform=axes[1].transAxes,va="top",color="gray")
     axes[1].set(xlabel="Additional checkpoint slots",ylabel="Peak saved-state bytes")
     axes[1].legend()
     fig.savefig(ART / "checkpoint-work.png",dpi=160)

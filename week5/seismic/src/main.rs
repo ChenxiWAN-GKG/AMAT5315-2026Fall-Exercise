@@ -737,14 +737,17 @@ fn update_adjoint_recording_metadata(
         std::fs::File::open(&path).map_err(|error| format!("read run.json: {error}"))?,
     )
     .map_err(|error| format!("parse run.json: {error}"))?;
-    let recorded_steps = (0..frame_count)
-        .map(|frame| steps.saturating_sub(frame * every))
+    let recorded_steps = std::iter::once(steps)
+        .chain((0..steps).rev().filter(|step| step % every == 0))
         .collect::<Vec<_>>();
+    if recorded_steps.len() != frame_count {
+        return Err("adjoint recording frame count mismatch".into());
+    }
     run["recording"] = json!({
         "every": every,
         "steps": recorded_steps,
-        "times": (0..frame_count)
-            .map(|frame| steps.saturating_sub(frame * every) as f64*dt)
+        "times": recorded_steps.iter()
+            .map(|step| *step as f64*dt)
             .collect::<Vec<_>>(),
     });
     write_json(&path, &run)

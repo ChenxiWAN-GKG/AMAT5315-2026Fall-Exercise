@@ -52,7 +52,7 @@ fn adjoint_command_reads_born_data_and_writes_image() {
             "--data",
             born_path.join("born_data.npy").to_str().unwrap(),
             "--every",
-            "1",
+            "3",
             "--out",
             adjoint_path.to_str().unwrap(),
         ])
@@ -88,6 +88,8 @@ fn adjoint_command_reads_born_data_and_writes_image() {
             "treeverse",
             "--checkpoints",
             "2",
+            "--every",
+            "3",
             "--out",
             checkpoint_path.to_str().unwrap(),
         ])
@@ -125,10 +127,11 @@ fn adjoint_command_reads_born_data_and_writes_image() {
     );
     let run: serde_json::Value =
         serde_json::from_str(&fs::read_to_string(adjoint_path.join("run.json")).unwrap()).unwrap();
-    assert_eq!(
-        run["recording"]["steps"],
-        serde_json::json!([4, 3, 2, 1, 0])
-    );
+    assert_eq!(run["recording"]["steps"], serde_json::json!([4, 3, 0]));
+    let checkpoint_run: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(checkpoint_path.join("run.json")).unwrap())
+            .unwrap();
+    assert_eq!(checkpoint_run["recording"], run["recording"]);
     for (step, time) in run["recording"]["steps"]
         .as_array()
         .unwrap()
