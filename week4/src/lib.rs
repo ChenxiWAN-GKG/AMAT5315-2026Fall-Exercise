@@ -2,6 +2,8 @@
 
 use std::f64::consts::PI;
 
+pub mod flow;
+
 /// One explicit time step for a vector-valued differential equation.
 pub trait Integrator {
     /// Advance `state` by `dt` using the supplied rate function.

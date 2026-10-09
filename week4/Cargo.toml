@@ -3,6 +3,11 @@ name = "week4"
 version = "0.1.0"
 edition = "2024"
 
+[dependencies]
+rustfft = "6.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
 [lib]
 name = "week4"
 path = "src/lib.rs"
@@ -18,3 +23,15 @@ path = "src/bin/line_data.rs"
 [[bin]]
 name = "line-accuracy-data"
 path = "src/bin/line_accuracy_data.rs"
+
+[[bin]]
+name = "field"
+path = "src/bin/field.rs"
+
+[[bin]]
+name = "fluid"
+path = "src/bin/fluid.rs"
+
+[[bin]]
+name = "derivative-data"
+path = "src/bin/derivative_data.rs"
