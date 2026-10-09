@@ -5,11 +5,6 @@ import json
 from pathlib import Path
 import subprocess
 
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
-
-
 def summarize(profile, binary):
     with gzip.open(profile, "rt") as source:
         thread = json.load(source)["threads"][0]
@@ -48,19 +43,6 @@ def main():
     for method in ["naive", "cells"]:
         count, total, duration = summarize(week / f"profile-{method}.json.gz", binary)
         share = 100 * count / total
-        fig, ax = plt.subplots(figsize=(6.0, 2.5))
-        ax.barh([0.45], [share], height=0.35, color="#246da5")
-        ax.barh([0.45], [100 - share], left=[share], height=0.35, color="#ce8654")
-        ax.set_xlim(0, 100)
-        ax.set_ylim(-0.2, 0.8)
-        ax.set_yticks([])
-        ax.set_xlabel("Share of sampled call stacks (%)")
-        ax.set_title(f"Samply: {method} force search, N = 400")
-        ax.text(share / 2, 0.45, f"Force function and calls: {share:.1f}%", ha="center", va="center", color="white", weight="bold")
-        ax.text(50, 0.05, f"{count}/{total} samples · profiled run {duration:.3f} s", ha="center")
-        fig.tight_layout()
-        fig.savefig(week / f"profile-{method}.png", dpi=180)
-        plt.close(fig)
         print(f"{method}: force share {share:.1f}% ({count}/{total}); profiled run {duration:.3f} s")
 
 

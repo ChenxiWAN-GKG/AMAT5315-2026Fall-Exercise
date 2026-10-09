@@ -28,7 +28,7 @@ The release median is 11.4 times faster than debug. These are wall-clock times o
 
 ## Profile
 
-The inclusive force share counts samples in `forces_and_energy_with_method` and its calls. `profile-*.json.gz` hold the original `samply` profiles; the companion `.syms.json` files preserve function names. The two PNGs plot the sampled shares, and `scripts/profile.py` recomputes them from the raw call stacks.
+The inclusive force share counts samples in `forces_and_energy_with_method` and its calls. `profile-*.json.gz` hold the original `samply` profiles; the companion `.syms.json` files preserve function names. The two PNGs capture the `samply` call trees, and `scripts/profile.py` recomputes the sampled shares from the raw call stacks.
 
 | Version | Force share (%) | Profiled run (s) |
 | --- | ---: | ---: |
@@ -77,7 +77,7 @@ Both videos contain 200 frames. Verified visually at the final frame: the cold a
 | `benchmark.json`, `scaling.png` | Download the course `week2-sim.py`, then `python3 scripts/benchmark.py --baseline week2-sim.py` |
 | `profile-naive.json.gz`, `profile-naive.json.syms.json` | `samply record --save-only --unstable-presymbolicate -o profile-naive.json.gz -- ./md/target/release/md --n 400 --rho 0.8 --temperature 0.5 --dt 0.01 --eq-steps 200 --steps 1000 --sample-every 50 --seed 2026 --force naive --out /tmp/md-prof` |
 | `profile-cells.json.gz`, `profile-cells.json.syms.json` | Repeat the preceding command with `--force cells` and `-o profile-cells.json.gz` |
-| `profile-naive.png`, `profile-cells.png` | `python3 scripts/profile.py` after the two profiles exist |
+| `profile-naive.png`, `profile-cells.png` | Open the saved profiles with `samply load profile-naive.json.gz` and `samply load profile-cells.json.gz`, then capture each call tree |
 | `heating/run.json`, `heating/traj.jsonl` | The 400-atom heating command above |
 | `cold.mp4`, `hot.mp4` | The two fixed-temperature runs and video commands above |
 
@@ -85,4 +85,4 @@ In the Rust code, each `FluidState` owns its position and velocity vectors. An i
 
 ## Limitations
 
-The `samply` PNGs are visual summaries of the sampled call stacks rather than screenshots of the profiler interface. The timing and profile measurements are machine-specific. The Lennard-Jones model is two-dimensional and uses velocity rescaling, so the videos illustrate this exercise's solid-to-fluid structural change rather than a general material's melting point.
+The timing and profile measurements are machine-specific. The Lennard-Jones model is two-dimensional and uses velocity rescaling, so the videos illustrate this exercise's solid-to-fluid structural change rather than a general material's melting point.
