@@ -20,6 +20,8 @@ pub struct RunMetadata {
     pub sample_every: usize,
     pub seed: u64,
     pub integrator: String,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub ramp_to: Option<f64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

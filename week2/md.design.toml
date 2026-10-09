@@ -1,0 +1,83 @@
+[model]
+potential  = "2D Lennard-Jones with epsilon = sigma = m = kB = 1"
+cutoff     = "shifted to zero at rc = 2.5, zero beyond it"
+boundaries = "minimum-image periodic"
+integrator = "velocity-Verlet"
+
+start      = "triangular lattice at density rho; n = 100 is 10 columns by 10 rows"
+velocities = "seeded Gaussian, variance temperature; centre of mass at rest"
+thermostat = "rescale velocities at the start and every 50 equilibration steps"
+t-thermo   = "T_thermo = 2 E_kin / (2 n - 2), the mean velocity being removed"
+production = "thermostat off; production time starts at zero after equilibration"
+
+[md]
+usage = "md --n 100 --rho 0.8 --temperature 0.5 --dt 0.01 --eq-steps 2000 --steps 10000 --sample-every 50 --seed 2026 --out artifacts"
+
+does     = "simulate the fluid and record its production frames"
+verb     = "one action, so no subcommand"
+required = "n, rho, temperature, dt, eq-steps, steps, sample-every, seed, out"
+defaults = "none for the physics of a run"
+
+prints  = "to stdout, a header then one tab-separated line per saved frame"
+columns = "t, E_pot, E_kin"
+stderr  = "messages only; nothing else on stdout"
+exit    = "0 success; 1 runtime failure; 2 usage error, with the message on stderr"
+
+[md.args]
+n           = "number of atoms"
+rho         = "number density"
+temperature = "thermostat target during equilibration"
+
+dt           = "integration timestep"
+eq-steps     = "equilibration steps, excluded from the recording"
+steps        = "production steps"
+sample-every = "save production steps divisible by this value; not step zero"
+
+seed = "random seed"
+out  = "output folder: artifacts for the gate's run, elsewhere for other runs"
+
+[md.encoding]
+precision = "positions and velocities with 9 significant digits"
+state     = "the integration state stays at full precision"
+energies  = "E_pot and E_kin recomputed from the serialized positions and velocities"
+json      = "compact JSON, no unnecessary whitespace; keep every recorded frame"
+
+[md.writes]
+"<out>/run.json" = "n, rho, box as [Lx, Ly], dt, temperature, eq_steps, steps"
+also             = "sample_every, seed, integrator = velocity-verlet"
+
+"<out>/traj.jsonl" = "one object per saved production frame: step, t = step * dt"
+fields             = "pos wrapped into the box, vel, E_pot, E_kin"
+energy             = "E_pot from the shifted potential"
+
+gate   = "https://giggleliu.github.io/AMAT5315-2026Fall/downloads/week2-contract.md"
+viewer = "https://giggleliu.github.io/AMAT5315-2026Fall/week2-viewer.html#format"
+
+[reproduce]
+command = "make reproduce"
+does    = "run the usage line above from week2/ in a release build, into artifacts/"
+
+[diagnostics]
+does   = "a script, not a command: recompute the physics from the saved frames"
+source = "energies and speeds from pos and vel; cross-check stored energies"
+
+secular-drift = "abs(mean(E_last_k) - mean(E_first_k)) / abs(E_0)"
+k             = "max(1, floor(frame_count / 10)); E_0 from the first frame; < 2e-3"
+T_speed       = "mean squared speed / 2 over all saved velocities"
+speed-rule    = "abs(T_speed - 0.5) < 0.05"
+chi2          = "24 equal-probability Rayleigh bins at T_speed; chi-squared / 22 < 2"
+
+[video]
+does    = "a script, not a command: atoms beside g(r), one video frame per frame"
+encodes = "ffmpeg; MP4 below 5 MB when committed as evidence"
+
+[md.force]
+usage   = "md --n 100 --rho 0.8 --temperature 0.5 --dt 0.01 --eq-steps 2000 --steps 10000 --sample-every 50 --seed 2026 --force naive --out /tmp/naive"
+choices = "naive or cells; cells is the default, naive stays for comparison"
+physics = "both methods compute the same forces and potential energy"
+
+[md.heating]
+usage      = "md --n 400 --rho 0.8 --temperature 0.2 --ramp-to 1.2 --dt 0.01 --eq-steps 2000 --steps 20000 --sample-every 100 --seed 2026 --out heating"
+target     = "ramp linearly from temperature at step 0 to ramp-to at the last step"
+thermostat = "rescale velocities every 50 production steps; without ramp-to, none"
+writes     = "ramp_to in run.json; heating output never goes to artifacts/"

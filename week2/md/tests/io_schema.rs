@@ -37,6 +37,7 @@ fn run_metadata_has_exact_keys_and_round_trips() {
         sample_every: 10,
         seed: 2026,
         integrator: "velocity-verlet".to_string(),
+        ramp_to: None,
     };
 
     write_run_metadata(&output, &metadata).unwrap();

@@ -1,0 +1,4 @@
+secular_drift = 0.00011046976; limit < 0.002; PASS
+abs(T_speed - 0.5) = 0.0088091886; limit < 0.05; PASS
+chi2/22 = 1.2930182; limit < 2; PASS
+T_speed = 0.50880919; max stored-energy difference = 5.12e-13

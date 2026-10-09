@@ -18,6 +18,7 @@ fn metadata() -> RunMetadata {
         sample_every: 1,
         seed: 2026,
         integrator: "velocity-verlet".to_string(),
+        ramp_to: None,
     }
 }
 
@@ -91,7 +92,7 @@ fn video_writes_one_compact_movie_for_saved_frames() {
 }
 
 #[test]
-fn video_cli_reports_clear_encoder_error_when_ffmpeg_is_missing() {
+fn video_renderer_reports_clear_encoder_error_when_ffmpeg_is_missing() {
     if ffmpeg_available() {
         eprintln!("SKIP: ffmpeg is available; missing-encoder path not exercised");
         return;
@@ -104,15 +105,6 @@ fn video_cli_reports_clear_encoder_error_when_ffmpeg_is_missing() {
     write_trajectory_frame(&mut trajectory, &frame(1, 1.0, 3.0)).unwrap();
     let output = output_dir.join("run.mp4");
 
-    let result = Command::new(env!("CARGO_BIN_EXE_md"))
-        .args(["video"])
-        .arg(&output_dir)
-        .args(["--out"])
-        .arg(&output)
-        .output()
-        .unwrap();
-
-    assert!(!result.status.success());
-    let stderr = String::from_utf8_lossy(&result.stderr);
-    assert!(stderr.contains("ffmpeg encoder unavailable"), "{stderr}");
+    let error = render_video(&output_dir, &output).unwrap_err();
+    assert!(error.to_string().contains("ffmpeg encoder unavailable"));
 }

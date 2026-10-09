@@ -39,6 +39,12 @@ pub struct FluidState {
     pub velocities: Vec<Vec2>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ForceMethod {
+    Naive,
+    Cells,
+}
+
 /// Errors raised while constructing or evaluating a fluid state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FluidError {
@@ -120,6 +126,25 @@ pub fn total_forces(
     box_size: &PeriodicBox,
     rc: f64,
 ) -> Result<Vec<Vec2>, FluidError> {
+    total_forces_with_method(state, box_size, rc, ForceMethod::Naive)
+}
+
+/// Compute the same Lennard-Jones forces with either pair-search method.
+pub fn total_forces_with_method(
+    state: &FluidState,
+    box_size: &PeriodicBox,
+    rc: f64,
+    method: ForceMethod,
+) -> Result<Vec<Vec2>, FluidError> {
+    Ok(forces_and_energy_with_method(state, box_size, rc, method)?.0)
+}
+
+pub fn forces_and_energy_with_method(
+    state: &FluidState,
+    box_size: &PeriodicBox,
+    rc: f64,
+    method: ForceMethod,
+) -> Result<(Vec<Vec2>, f64), FluidError> {
     if !(box_size.lx.is_finite()
         && box_size.ly.is_finite()
         && box_size.lx > 0.0
@@ -149,8 +174,8 @@ pub fn total_forces(
     }
 
     let mut forces = vec![Vec2::ZERO; state.positions.len()];
-    for i in 0..state.positions.len() {
-        for j in (i + 1)..state.positions.len() {
+    let mut potential_energy = 0.0;
+    let mut visit_pair = |i: usize, j: usize| -> Result<(), FluidError> {
             let raw_displacement = Vec2::new(
                 state.positions[i].x - state.positions[j].x,
                 state.positions[i].y - state.positions[j].y,
@@ -168,8 +193,10 @@ pub fn total_forces(
                 return Err(FluidError::Overlap);
             }
             if distance >= rc {
-                continue;
+                return Ok(());
             }
+
+            potential_energy += shifted_lj_potential(distance, rc);
 
             let magnitude = lj_force_magnitude(distance) / distance;
             let pair_force = Vec2::new(
@@ -191,10 +218,51 @@ pub fn total_forces(
             {
                 return Err(FluidError::NonFinite);
             }
+            Ok(())
+    };
+
+    match method {
+        ForceMethod::Naive => {
+            for i in 0..state.positions.len() {
+                for j in (i + 1)..state.positions.len() {
+                    visit_pair(i, j)?;
+                }
+            }
+        }
+        ForceMethod::Cells => {
+            let nx = ((box_size.lx / rc).floor() as usize).max(1);
+            let ny = ((box_size.ly / rc).floor() as usize).max(1);
+            let mut cells = vec![Vec::<usize>::new(); nx * ny];
+            let mut atom_cells = Vec::with_capacity(state.positions.len());
+            for (i, point) in state.positions.iter().enumerate() {
+                let x = ((point.x.rem_euclid(box_size.lx) / box_size.lx * nx as f64) as usize).min(nx - 1);
+                let y = ((point.y.rem_euclid(box_size.ly) / box_size.ly * ny as f64) as usize).min(ny - 1);
+                cells[y * nx + x].push(i);
+                atom_cells.push((x, y));
+            }
+            for (i, &(x, y)) in atom_cells.iter().enumerate() {
+                let mut seen = Vec::with_capacity(9);
+                for dy in [-1_isize, 0, 1] {
+                    for dx in [-1_isize, 0, 1] {
+                        let xx = (x as isize + dx).rem_euclid(nx as isize) as usize;
+                        let yy = (y as isize + dy).rem_euclid(ny as isize) as usize;
+                        let cell_index = yy * nx + xx;
+                        if seen.contains(&cell_index) {
+                            continue;
+                        }
+                        seen.push(cell_index);
+                        for &j in &cells[cell_index] {
+                            if j > i {
+                                visit_pair(i, j)?;
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
-    Ok(forces)
+    Ok((forces, potential_energy))
 }
 
 /// Prepare deterministic Gaussian velocities with zero centre-of-mass motion.
@@ -286,13 +354,23 @@ pub fn velocity_verlet_step(
     dt: f64,
     rc: f64,
 ) -> Result<(), FluidError> {
+    velocity_verlet_step_with_method(state, box_size, dt, rc, ForceMethod::Naive)
+}
+
+pub fn velocity_verlet_step_with_method(
+    state: &mut FluidState,
+    box_size: &PeriodicBox,
+    dt: f64,
+    rc: f64,
+    method: ForceMethod,
+) -> Result<(), FluidError> {
     if !(dt.is_finite() && dt > 0.0) {
         return Err(FluidError::InvalidConfiguration(
             "time step must be finite and positive",
         ));
     }
 
-    let old_forces = total_forces(state, box_size, rc)?;
+    let old_forces = total_forces_with_method(state, box_size, rc, method)?;
     let half_dt_squared = 0.5 * dt * dt;
     let mut next_state = state.clone();
     for (index, position) in next_state.positions.iter_mut().enumerate() {
@@ -301,7 +379,7 @@ pub fn velocity_verlet_step(
         *position = box_size.wrap(*position);
     }
 
-    let new_forces = total_forces(&next_state, box_size, rc)?;
+    let new_forces = total_forces_with_method(&next_state, box_size, rc, method)?;
     for (index, velocity) in next_state.velocities.iter_mut().enumerate() {
         velocity.x += 0.5 * (old_forces[index].x + new_forces[index].x) * dt;
         velocity.y += 0.5 * (old_forces[index].y + new_forces[index].y) * dt;

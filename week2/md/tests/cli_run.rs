@@ -12,15 +12,22 @@ fn built_binary_writes_readable_run_and_trajectory_files() {
     let out = unique_temp_dir("cli");
     let status = Command::new(env!("CARGO_BIN_EXE_md"))
         .args([
-            "run",
             "--n",
             "16",
+            "--rho",
+            "0.8",
+            "--temperature",
+            "0.5",
+            "--dt",
+            "0.01",
             "--eq-steps",
             "50",
             "--steps",
             "20",
             "--sample-every",
             "10",
+            "--seed",
+            "2026",
             "--out",
         ])
         .arg(&out)

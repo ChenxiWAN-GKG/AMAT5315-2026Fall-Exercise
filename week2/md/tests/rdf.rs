@@ -13,6 +13,7 @@ fn metadata() -> RunMetadata {
         sample_every: 1,
         seed: 2026,
         integrator: "velocity-verlet".to_string(),
+        ramp_to: None,
     }
 }
 
