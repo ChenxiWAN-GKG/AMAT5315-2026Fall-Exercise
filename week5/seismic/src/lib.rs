@@ -1,2 +1,3 @@
+pub mod checkpoint;
 pub mod experiment;
 pub mod solver;

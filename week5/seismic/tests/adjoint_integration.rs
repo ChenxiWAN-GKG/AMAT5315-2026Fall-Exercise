@@ -51,6 +51,8 @@ fn adjoint_command_reads_born_data_and_writes_image() {
             "adjoint",
             "--data",
             born_path.join("born_data.npy").to_str().unwrap(),
+            "--every",
+            "1",
             "--out",
             adjoint_path.to_str().unwrap(),
         ])
@@ -72,4 +74,67 @@ fn adjoint_command_reads_born_data_and_writes_image() {
         .unwrap()["mode"],
         "adjoint"
     );
+
+    let checkpoint_path = directory.path().join("checkpoint");
+    let checkpoint = Command::new(&binary)
+        .args([
+            "--experiment",
+            experiment_path.to_str().unwrap(),
+            "--mode",
+            "adjoint",
+            "--data",
+            born_path.join("born_data.npy").to_str().unwrap(),
+            "--storage",
+            "treeverse",
+            "--checkpoints",
+            "2",
+            "--out",
+            checkpoint_path.to_str().unwrap(),
+        ])
+        .output()
+        .unwrap();
+    assert!(
+        checkpoint.status.success(),
+        "checkpoint stderr: {}",
+        String::from_utf8_lossy(&checkpoint.stderr)
+    );
+    let replayed: ndarray::Array2<f64> = read_npy(checkpoint_path.join("image.npy")).unwrap();
+    let error = (&image - &replayed)
+        .mapv(|value| value * value)
+        .sum()
+        .sqrt()
+        / image.mapv(|value| value * value).sum().sqrt();
+    assert!(error < 1e-12, "checkpoint image relative error: {error}");
+    let actions: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(checkpoint_path.join("actions-0.json")).unwrap())
+            .unwrap();
+    let reverse_steps = actions
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|item| item["action"] == "grad")
+        .map(|item| item["step"].as_u64().unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(reverse_steps, vec![3, 2, 1, 0]);
+    assert!(
+        actions
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|item| item["saved_states"].as_u64().unwrap() <= 3)
+    );
+    let run: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(adjoint_path.join("run.json")).unwrap()).unwrap();
+    assert_eq!(
+        run["recording"]["steps"],
+        serde_json::json!([4, 3, 2, 1, 0])
+    );
+    for (step, time) in run["recording"]["steps"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .zip(run["recording"]["times"].as_array().unwrap())
+    {
+        assert!((time.as_f64().unwrap() - step.as_u64().unwrap() as f64 * 0.2).abs() < 1e-12);
+    }
 }

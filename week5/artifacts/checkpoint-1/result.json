@@ -77,29 +77,32 @@
     ]
   ],
   "statistics": {
-    "checkpoints": null,
-    "peak_saved_bytes": 6481936,
-    "peak_saved_states": 241,
+    "checkpoints": 1,
+    "peak_saved_bytes": 53792,
+    "peak_saved_states": 2,
     "per_shot": [
       {
-        "peak_saved_states": 241,
+        "actions_file": "actions-0.json",
+        "peak_saved_states": 2,
         "reverse_calls": 240,
-        "scheduler_forward_calls": 240
+        "scheduler_forward_calls": 28680
       },
       {
-        "peak_saved_states": 241,
+        "actions_file": "actions-1.json",
+        "peak_saved_states": 2,
         "reverse_calls": 240,
-        "scheduler_forward_calls": 240
+        "scheduler_forward_calls": 28680
       },
       {
-        "peak_saved_states": 241,
+        "actions_file": "actions-2.json",
+        "peak_saved_states": 2,
         "reverse_calls": 240,
-        "scheduler_forward_calls": 240
+        "scheduler_forward_calls": 28680
       }
     ],
     "reverse_calls": 720,
-    "scheduler_forward_calls": 720,
-    "storage": "full"
+    "scheduler_forward_calls": 86040,
+    "storage": "treeverse"
   },
   "steps": 240
 }

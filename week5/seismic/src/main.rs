@@ -1,10 +1,12 @@
 use std::path::{Path, PathBuf};
+use std::{collections::BTreeMap, io::Write};
 
 use clap::Parser;
 use ndarray::{Array2, Array3, ArrayView2, s};
 use ndarray_npy::{read_npy, write_npy};
 use serde_json::{Value, json};
 
+use seismic::checkpoint::{Action, schedule};
 use seismic::experiment::{Experiment, load_experiment};
 use seismic::solver::{
     advance, build_sponge, enzyme_step_cell, enzyme_step_cell_reverse, gaussian_footprint, ricker,
@@ -24,6 +26,10 @@ struct Args {
     out: PathBuf,
     #[arg(long)]
     data: Option<PathBuf>,
+    #[arg(long, default_value = "full")]
+    storage: String,
+    #[arg(long)]
+    checkpoints: Option<usize>,
 }
 
 struct ShotResult {
@@ -78,6 +84,8 @@ fn run() -> Result<(), String> {
     ));
     let mut first_background_frames = Vec::new();
 
+    println!("shot\tmode\tdata_l2_norm");
+
     for (shot_index, &shot) in experiment.shots.iter().enumerate() {
         let result = run_shot(
             &experiment,
@@ -89,6 +97,10 @@ fn run() -> Result<(), String> {
         traces
             .slice_mut(s![shot_index, .., ..])
             .assign(&result.traces);
+        println!(
+            "{shot_index}\tforward\t{:.9}",
+            l2(result.traces.iter().copied())
+        );
         if shot_index == 0 {
             first_background_frames = result.frames;
         }
@@ -112,7 +124,13 @@ fn run() -> Result<(), String> {
             .map_err(|error| format!("write wavefield.npy: {error}"))?;
         write_npy(args.out.join("echo.npy"), &echo)
             .map_err(|error| format!("write echo.npy: {error}"))?;
-        update_recording_metadata(&args.out, every, experiment.steps, wavefield.shape()[0])?;
+        update_recording_metadata(
+            &args.out,
+            every,
+            experiment.steps,
+            experiment.dt,
+            wavefield.shape()[0],
+        )?;
     }
     Ok(())
 }
@@ -130,8 +148,10 @@ fn run_born(args: &Args, experiment: &Experiment) -> Result<(), String> {
         experiment.steps,
         experiment.receivers.len(),
     ));
+    println!("shot\tmode\tdata_l2_norm");
     for (shot_index, &shot) in experiment.shots.iter().enumerate() {
         let traces = run_born_shot(experiment, &sigma, shot);
+        println!("{shot_index}\tborn\t{:.9}", l2(traces.iter().copied()));
         born_data.slice_mut(s![shot_index, .., ..]).assign(&traces);
     }
     write_npy(args.out.join("born_data.npy"), &born_data)
@@ -198,6 +218,21 @@ fn run_born_shot(experiment: &Experiment, sigma: &Array2<f64>, shot: [usize; 2])
 }
 
 fn run_adjoint(args: &Args, experiment: &Experiment) -> Result<(), String> {
+    if args.storage != "full" && args.storage != "treeverse" {
+        return Err("--storage must be full or treeverse".into());
+    }
+    let budget = if args.storage == "treeverse" {
+        Some(
+            args.checkpoints
+                .filter(|&n| n > 0)
+                .ok_or("treeverse requires positive --checkpoints")?,
+        )
+    } else {
+        if args.checkpoints.is_some() {
+            return Err("--checkpoints requires treeverse storage".into());
+        }
+        None
+    };
     let data_path = args
         .data
         .as_ref()
@@ -225,23 +260,72 @@ fn run_adjoint(args: &Args, experiment: &Experiment) -> Result<(), String> {
     );
     let mut image = Array2::zeros((experiment.nz, experiment.nx));
     let mut first_adjoint_frames = Vec::new();
+    let mut per_shot = Vec::new();
+    println!("shot\tmode\tdata_l2_norm");
     for (shot_index, &shot) in experiment.shots.iter().enumerate() {
-        let trajectory = forward_trajectory(experiment, &sigma, shot);
-        let result = run_adjoint_shot(
-            experiment,
-            &sigma,
-            &trajectory,
-            shot,
-            data.slice(s![shot_index, .., ..]),
-            args.every,
+        println!(
+            "{shot_index}\tadjoint\t{:.9}",
+            l2(data.slice(s![shot_index, .., ..]).iter().copied())
         );
+        let (result, stats) = if let Some(budget) = budget {
+            run_treeverse_shot(
+                experiment,
+                &sigma,
+                shot,
+                data.slice(s![shot_index, .., ..]),
+                args.every,
+                budget,
+                shot_index,
+                &args.out,
+            )?
+        } else {
+            let trajectory = forward_trajectory(experiment, &sigma, shot);
+            let result = run_adjoint_shot(
+                experiment,
+                &sigma,
+                &trajectory,
+                shot,
+                data.slice(s![shot_index, .., ..]),
+                args.every,
+            );
+            (
+                result,
+                json!({"reverse_calls":experiment.steps,
+                "scheduler_forward_calls":experiment.steps,
+                "peak_saved_states":experiment.steps+1}),
+            )
+        };
         image += &result.image;
+        per_shot.push(stats);
         if shot_index == 0 {
             first_adjoint_frames = result.frames;
         }
     }
     write_npy(args.out.join("image.npy"), &image)
         .map_err(|error| format!("write image.npy: {error}"))?;
+    let state_bytes = 2 * experiment.nx * experiment.nz * std::mem::size_of::<f64>();
+    let peak = per_shot
+        .iter()
+        .map(|stats| stats["peak_saved_states"].as_u64().unwrap() as usize)
+        .max()
+        .unwrap_or(0);
+    let forward_calls = per_shot
+        .iter()
+        .map(|stats| stats["scheduler_forward_calls"].as_u64().unwrap() as usize)
+        .sum::<usize>();
+    let reverse_calls = per_shot
+        .iter()
+        .map(|stats| stats["reverse_calls"].as_u64().unwrap() as usize)
+        .sum::<usize>();
+    let mut result_json: Value = serde_json::from_reader(
+        std::fs::File::open(args.out.join("result.json")).map_err(|e| e.to_string())?,
+    )
+    .map_err(|e| e.to_string())?;
+    result_json["statistics"] = json!({"storage":args.storage,"checkpoints":budget,
+        "reverse_calls":reverse_calls,"scheduler_forward_calls":forward_calls,
+        "peak_saved_states":peak,"peak_saved_bytes":peak*state_bytes,
+        "per_shot":per_shot});
+    write_json(&args.out.join("result.json"), &result_json)?;
     if let Some(every) = args.every {
         let wavefield = stack_frames(&first_adjoint_frames, experiment.nz, experiment.nx);
         write_npy(args.out.join("wavefield.npy"), &wavefield)
@@ -250,10 +334,145 @@ fn run_adjoint(args: &Args, experiment: &Experiment) -> Result<(), String> {
             &args.out,
             every,
             experiment.steps,
+            experiment.dt,
             wavefield.shape()[0],
         )?;
     }
     Ok(())
+}
+
+fn l2(values: impl Iterator<Item = f64>) -> f64 {
+    values.map(|x| x * x).sum::<f64>().sqrt()
+}
+
+fn advance_saved_state(
+    experiment: &Experiment,
+    sigma: &Array2<f64>,
+    footprint: &Array2<f64>,
+    step: usize,
+    state: &(Array2<f64>, Array2<f64>),
+) -> (Array2<f64>, Array2<f64>) {
+    let pulse = experiment.source_amplitude
+        * ricker(
+            step as f64 * experiment.dt,
+            experiment.source_frequency,
+            experiment.source_peak_time,
+        );
+    let source = footprint * pulse;
+    let mut next = Array2::zeros((experiment.nz, experiment.nx));
+    advance(
+        &state.0,
+        &state.1,
+        &mut next,
+        &experiment.background,
+        sigma,
+        &source,
+        experiment.dx,
+        experiment.dt,
+    );
+    (state.1.clone(), next)
+}
+
+fn write_actions(path: &Path, actions: &[Action]) -> Result<(), String> {
+    let mut file = std::io::BufWriter::new(std::fs::File::create(path).map_err(|e| e.to_string())?);
+    writeln!(file, "[").map_err(|e| e.to_string())?;
+    for (index, action) in actions.iter().enumerate() {
+        let comma = if index + 1 == actions.len() { "" } else { "," };
+        writeln!(
+            file,
+            "{}{}",
+            serde_json::to_string(action).map_err(|e| e.to_string())?,
+            comma
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    writeln!(file, "]").map_err(|e| e.to_string())
+}
+
+fn run_treeverse_shot(
+    experiment: &Experiment,
+    sigma: &Array2<f64>,
+    shot: [usize; 2],
+    data: ArrayView2<'_, f64>,
+    every: Option<usize>,
+    budget: usize,
+    shot_index: usize,
+    out: &Path,
+) -> Result<(AdjointShotResult, Value), String> {
+    let plan = schedule(experiment.steps, budget);
+    let filename = format!("actions-{shot_index}.json");
+    write_actions(&out.join(&filename), &plan.actions)?;
+    let footprint = gaussian_footprint(experiment.nx, experiment.nz, shot[0], shot[1]);
+    let initial = (
+        Array2::zeros((experiment.nz, experiment.nx)),
+        Array2::zeros((experiment.nz, experiment.nx)),
+    );
+    let mut saved = BTreeMap::from([(0, initial.clone())]);
+    let mut working = initial;
+    let mut working_step = 0;
+    let mut output_bar = Array2::<f64>::zeros((experiment.nz, experiment.nx));
+    let mut pending_bar = Array2::<f64>::zeros((experiment.nz, experiment.nx));
+    let mut image = Array2::<f64>::zeros((experiment.nz, experiment.nx));
+    let mut frames = Vec::new();
+    if every.is_some() {
+        frames.push(output_bar.mapv(|value| value as f32));
+    }
+    for action in &plan.actions {
+        match action.action {
+            "restore" => {
+                working = saved
+                    .get(&action.step)
+                    .ok_or("invalid Treeverse restore")?
+                    .clone();
+                working_step = action.step;
+            }
+            "call" => {
+                if working_step != action.step {
+                    return Err("Treeverse call order mismatch".into());
+                }
+                working = advance_saved_state(experiment, sigma, &footprint, action.step, &working);
+                working_step += 1;
+            }
+            "store" => {
+                if working_step != action.step {
+                    return Err("Treeverse store order mismatch".into());
+                }
+                saved.insert(action.step, working.clone());
+            }
+            "grad" => {
+                let (previous, current) = saved.get(&action.step).ok_or("missing reverse input")?;
+                reverse_one_step(
+                    experiment,
+                    sigma,
+                    &footprint,
+                    action.step,
+                    previous,
+                    current,
+                    data,
+                    &mut output_bar,
+                    &mut pending_bar,
+                    &mut image,
+                );
+                if every.is_some_and(|interval| action.step % interval == 0) || action.step == 0 {
+                    if every.is_some() {
+                        frames.push(output_bar.mapv(|value| value as f32));
+                    }
+                }
+            }
+            "fetch" => {
+                saved.remove(&action.step);
+            }
+            _ => return Err("unknown Treeverse action".into()),
+        }
+        if saved.len() != action.saved_states {
+            return Err("Treeverse saved-state count mismatch".into());
+        }
+    }
+    let stats = json!({"reverse_calls":plan.reverse_calls,
+        "scheduler_forward_calls":plan.forward_calls,
+        "peak_saved_states":plan.peak_saved_states,
+        "actions_file":filename});
+    Ok((AdjointShotResult { image, frames }, stats))
 }
 
 fn forward_trajectory(
@@ -309,46 +528,19 @@ fn run_adjoint_shot(
     }
 
     for step in (0..experiment.steps).rev() {
-        for (receiver, &[x, z]) in experiment.receivers.iter().enumerate() {
-            output_bar[[z, x]] += data[[step, receiver]];
-        }
-        let source_value = experiment.source_amplitude
-            * ricker(
-                step as f64 * experiment.dt,
-                experiment.source_frequency,
-                experiment.source_peak_time,
-            );
-        let source = &footprint * source_value;
         let (previous, current) = &trajectory[step];
-        let mut previous_bar = Array2::<f64>::zeros((experiment.nz, experiment.nx));
-        let mut current_bar = Array2::<f64>::zeros((experiment.nz, experiment.nx));
-        for z in 1..(experiment.nz - 1) {
-            for x in 1..(experiment.nx - 1) {
-                let bars = enzyme_step_cell_reverse(
-                    previous[[z, x]],
-                    current[[z, x]],
-                    current[[z, x - 1]],
-                    current[[z, x + 1]],
-                    current[[z - 1, x]],
-                    current[[z + 1, x]],
-                    experiment.background[[z, x]],
-                    sigma[[z, x]],
-                    source[[z, x]],
-                    experiment.dx,
-                    experiment.dt,
-                    output_bar[[z, x]],
-                );
-                previous_bar[[z, x]] += bars[1];
-                current_bar[[z, x]] += bars[2];
-                current_bar[[z, x - 1]] += bars[3];
-                current_bar[[z, x + 1]] += bars[4];
-                current_bar[[z - 1, x]] += bars[5];
-                current_bar[[z + 1, x]] += bars[6];
-                image[[z, x]] += bars[7];
-            }
-        }
-        output_bar = current_bar + &pending_bar;
-        pending_bar = previous_bar;
+        reverse_one_step(
+            experiment,
+            sigma,
+            &footprint,
+            step,
+            previous,
+            current,
+            data,
+            &mut output_bar,
+            &mut pending_bar,
+            &mut image,
+        );
         if every.is_some_and(|interval| step % interval == 0) || step == 0 {
             if every.is_some() {
                 frames.push(output_bar.mapv(|value| value as f32));
@@ -356,6 +548,59 @@ fn run_adjoint_shot(
         }
     }
     AdjointShotResult { image, frames }
+}
+
+fn reverse_one_step(
+    experiment: &Experiment,
+    sigma: &Array2<f64>,
+    footprint: &Array2<f64>,
+    step: usize,
+    previous: &Array2<f64>,
+    current: &Array2<f64>,
+    data: ArrayView2<'_, f64>,
+    output_bar: &mut Array2<f64>,
+    pending_bar: &mut Array2<f64>,
+    image: &mut Array2<f64>,
+) {
+    for (receiver, &[x, z]) in experiment.receivers.iter().enumerate() {
+        output_bar[[z, x]] += data[[step, receiver]];
+    }
+    let source_value = experiment.source_amplitude
+        * ricker(
+            step as f64 * experiment.dt,
+            experiment.source_frequency,
+            experiment.source_peak_time,
+        );
+    let source = footprint * source_value;
+    let mut previous_bar = Array2::<f64>::zeros((experiment.nz, experiment.nx));
+    let mut current_bar = Array2::<f64>::zeros((experiment.nz, experiment.nx));
+    for z in 1..(experiment.nz - 1) {
+        for x in 1..(experiment.nx - 1) {
+            let bars = enzyme_step_cell_reverse(
+                previous[[z, x]],
+                current[[z, x]],
+                current[[z, x - 1]],
+                current[[z, x + 1]],
+                current[[z - 1, x]],
+                current[[z + 1, x]],
+                experiment.background[[z, x]],
+                sigma[[z, x]],
+                source[[z, x]],
+                experiment.dx,
+                experiment.dt,
+                output_bar[[z, x]],
+            );
+            previous_bar[[z, x]] += bars[1];
+            current_bar[[z, x]] += bars[2];
+            current_bar[[z, x - 1]] += bars[3];
+            current_bar[[z, x + 1]] += bars[4];
+            current_bar[[z - 1, x]] += bars[5];
+            current_bar[[z + 1, x]] += bars[6];
+            image[[z, x]] += bars[7];
+        }
+    }
+    *output_bar = current_bar + &*pending_bar;
+    *pending_bar = previous_bar;
 }
 
 fn run_shot(
@@ -459,6 +704,7 @@ fn update_recording_metadata(
     output: &Path,
     every: usize,
     steps: usize,
+    dt: f64,
     frame_count: usize,
 ) -> Result<(), String> {
     let path = output.join("run.json");
@@ -473,7 +719,7 @@ fn update_recording_metadata(
             .collect::<Vec<_>>(),
         "times": (0..frame_count)
             .map(|frame| if frame == frame_count - 1 { steps } else { frame * every })
-            .map(|step| step as f64)
+            .map(|step| step as f64*dt)
             .collect::<Vec<_>>(),
     });
     write_json(&path, &run)
@@ -483,6 +729,7 @@ fn update_adjoint_recording_metadata(
     output: &Path,
     every: usize,
     steps: usize,
+    dt: f64,
     frame_count: usize,
 ) -> Result<(), String> {
     let path = output.join("run.json");
@@ -497,7 +744,7 @@ fn update_adjoint_recording_metadata(
         "every": every,
         "steps": recorded_steps,
         "times": (0..frame_count)
-            .map(|frame| steps.saturating_sub(frame * every) as f64)
+            .map(|frame| steps.saturating_sub(frame * every) as f64*dt)
             .collect::<Vec<_>>(),
     });
     write_json(&path, &run)

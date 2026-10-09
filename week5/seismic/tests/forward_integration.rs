@@ -49,6 +49,13 @@ fn forward_command_writes_traces_metadata_and_recording() {
     assert_eq!(traces.raw_dim(), Ix3(1, 2, 1));
     assert!(output_path.join("run.json").exists());
     assert!(output_path.join("result.json").exists());
+    let run: serde_json::Value =
+        serde_json::from_str(&fs::read_to_string(output_path.join("run.json")).unwrap()).unwrap();
+    assert_eq!(run["recording"]["steps"], serde_json::json!([0, 1, 2]));
+    assert_eq!(
+        run["recording"]["times"],
+        serde_json::json!([0.0, 0.2, 0.4])
+    );
 
     let wavefield: Array3<f32> = ndarray_npy::read_npy(output_path.join("wavefield.npy")).unwrap();
     assert_eq!(wavefield.shape(), &[3, 5, 5]);
