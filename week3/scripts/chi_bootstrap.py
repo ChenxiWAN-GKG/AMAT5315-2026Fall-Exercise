@@ -86,15 +86,17 @@ def bootstrap_fits(
     temperatures = np.asarray(sorted(data), dtype=np.float64)
     stats = [block_statistics(data[temperature], block_length) for temperature in temperatures]
     rng = np.random.default_rng(seed)
-    replicate_count = stats[0].shape[0]
-    indices = rng.integers(0, replicate_count, size=(REPLICATES, replicate_count))
+    indices_by_temperature = [
+        rng.integers(0, len(block_stat), size=(REPLICATES, len(block_stat)))
+        for block_stat in stats
+    ]
     peak_temperatures = []
     coefficients = []
     failed = 0
-    for replicate_indices in indices:
+    for replicate in range(REPLICATES):
         chi_values = []
-        for temperature, block_stat in zip(temperatures, stats):
-            selected = block_stat[replicate_indices]
+        for temperature, block_stat, indices in zip(temperatures, stats, indices_by_temperature):
+            selected = block_stat[indices[replicate]]
             count = block_length * len(selected)
             mean_m = np.sum(selected[:, 0]) / count
             mean_m2 = np.sum(selected[:, 1]) / count
